@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ヘルパー関数: ユーザーの役割を取得
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // ヘルパー関数: 管理者または職員かチェック
+    function isAdminOrStaff() {
+      return getUserRole() == 'admin' || getUserRole() == 'staff';
+    }
+    
+    // ヘルパー関数: 管理者かチェック
+    function isAdmin() {
+      return getUserRole() == 'admin';
+    }
+    
+    // ユーザーコレクション
+    match /users/{userId} {
+      // すべての認証済みユーザーが読み取り可能
+      allow read: if request.auth != null;
+      
+      // 新規ユーザー作成は認証済みユーザーのみ
+      allow create: if request.auth != null;
+      
+      // 更新・削除は管理者または本人のみ
+      allow update, delete: if request.auth != null && 
+        (isAdmin() || request.auth.uid == userId);
+    }
+    
+    // 投稿コレクション
+    match /posts/{postId} {
+      // すべての認証済みユーザーが読み取り可能
+      allow read: if request.auth != null;
+      
+      // 作成は管理者または職員のみ
+      allow create: if request.auth != null && isAdminOrStaff();
+      
+      // 更新・削除は管理者または職員のみ
+      allow update, delete: if request.auth != null && isAdminOrStaff();
+    }
+    
+    // メッセージコレクション
+    match /messages/{messageId} {
+      // 読み取りは送信者、受信者、管理者のみ
+      allow read: if request.auth != null && 
+        (resource.data.recipientId == request.auth.uid ||
+         resource.data.senderId == request.auth.uid ||
+         isAdmin());
+      
+      // 作成は管理者または職員のみ
+      allow create: if request.auth != null && isAdminOrStaff();
+      
+      // 更新は受信者（既読フラグ用）または管理者
+      allow update: if request.auth != null && 
+        (resource.data.recipientId == request.auth.uid ||
+         isAdmin());
+      
+      // 削除は管理者のみ
+      allow delete: if request.auth != null && isAdmin();
+    }
+    
+    // イベントコレクション
+    match /events/{eventId} {
+      // すべての認証済みユーザーが読み取り可能
+      allow read: if request.auth != null;
+      
+      // 作成は管理者または職員のみ
+      allow create: if request.auth != null && isAdminOrStaff();
+      
+      // 更新・削除は管理者または職員のみ
+      allow update, delete: if request.auth != null && isAdminOrStaff();
+    }
+  }
+}

@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学校コミュニケーションアプリ - 管理者ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .sidebar {
+            transition: transform 0.3s ease;
+        }
+        @media (max-width: 768px) {
+            .sidebar.hidden-mobile {
+                transform: translateX(-100%);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="flex h-screen overflow-hidden">
+        <!-- サイドバー -->
+        <aside id="sidebar" class="sidebar w-64 bg-gray-900 text-white flex-shrink-0">
+            <div class="p-6">
+                <div class="flex items-center space-x-3 mb-8">
+                    <i class="fas fa-user-shield text-3xl text-blue-400"></i>
+                    <div>
+                        <h1 class="text-xl font-bold">管理者ツール</h1>
+                        <p class="text-sm text-gray-400">学校コミュニケーション</p>
+                    </div>
+                </div>
+                
+                <nav class="space-y-2">
+                    <button onclick="showDashboard()" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-800 transition-colors text-left">
+                        <i class="fas fa-home text-lg"></i>
+                        <span>ダッシュボード</span>
+                    </button>
+                    <button onclick="showPosts()" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-800 transition-colors text-left">
+                        <i class="fas fa-thumbtack text-lg"></i>
+                        <span>投稿管理</span>
+                    </button>
+                    <button onclick="showMessages()" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-800 transition-colors text-left">
+                        <i class="fas fa-envelope text-lg"></i>
+                        <span>メッセージ管理</span>
+                    </button>
+                    <button onclick="showUsers()" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-800 transition-colors text-left">
+                        <i class="fas fa-users text-lg"></i>
+                        <span>ユーザー管理</span>
+                    </button>
+                    <button onclick="showEvents()" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-800 transition-colors text-left">
+                        <i class="fas fa-calendar-alt text-lg"></i>
+                        <span>イベント管理</span>
+                    </button>
+                </nav>
+
+                <div class="mt-8 pt-8 border-t border-gray-700">
+                    <button onclick="handleLogout()" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-red-900 transition-colors text-left text-red-400">
+                        <i class="fas fa-sign-out-alt text-lg"></i>
+                        <span>ログアウト</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main class="flex-1 overflow-auto">
+            <div id="mainContent" class="p-8">
+                <!-- コンテンツがここに表示されます -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, onSnapshot, serverTimestamp, setDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+
+        // Firebase設定（実際の値に置き換える必要があります）
+        const firebaseConfig = {
+            apiKey: "AIzaSyADqyQpF6Ov2JPe18eDHpbM7-hRDIHJseY",
+            authDomain: "shinshu-clark-app.firebaseapp.com",
+            projectId: "shinshu-clark-app",
+            storageBucket: "shinshu-clark-app.firebasestorage.app",
+            messagingSenderId: "892911464932",
+            appId: "1:892911464932:web:4eeed95bdf19c98e3ad7f1"
+        };
+
+        // Firebase初期化
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        window.firebaseApp = { app, auth, db, storage };
+        window.firebaseAuth = { signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword };
+        window.firebaseFirestore = { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, onSnapshot, serverTimestamp, setDoc };
+        window.firebaseStorage = { ref, uploadBytes, getDownloadURL };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        function initApp() {
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    const userData = await getUserData(user.uid);
+                    if (userData && (userData.role === 'admin' || userData.role === 'staff')) {
+                        window.currentUser = { ...user, ...userData };
+                        showDashboard();
+                    } else {
+                        showAccessDenied();
+                    }
+                } else {
+                    showLogin();
+                }
+            });
+        }
+
+        async function getUserData(uid) {
+            const userQuery = query(collection(db, 'users'), where('uid', '==', uid));
+            const userDocs = await getDocs(userQuery);
+            if (!userDocs.empty) {
+                return userDocs.docs[0].data();
+            }
+            return null;
+        }
+
+        function showLogin() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-gray-900 p-6">
+                    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
+                        <div class="text-center mb-8">
+                            <i class="fas fa-user-shield text-6xl text-blue-600 mb-4"></i>
+                            <h1 class="text-3xl font-bold text-gray-800 mb-2">管理者ログイン</h1>
+                            <p class="text-gray-600">学校コミュニケーション管理ツール</p>
+                        </div>
+
+                        <form id="loginForm" class="space-y-4">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">メールアドレス</label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="admin@school.jp"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">パスワード</label>
+                                <input
+                                    type="password"
+                                    id="password"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+
+                            <div id="errorMessage" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg"></div>
+
+                            <button
+                                type="submit"
+                                class="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg"
+                            >
+                                <i class="fas fa-sign-in-alt mr-2"></i>
+                                ログイン
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('errorMessage');
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+            } catch (error) {
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = 'ログインに失敗しました: ' + error.message;
+            }
+        }
+
+        function showAccessDenied() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+                    <div class="bg-white rounded-lg shadow-xl p-8 text-center max-w-md">
+                        <i class="fas fa-exclamation-triangle text-6xl text-red-500 mb-4"></i>
+                        <h1 class="text-2xl font-bold text-gray-800 mb-4">アクセス拒否</h1>
+                        <p class="text-gray-600 mb-6">このページにアクセスする権限がありません。</p>
+                        <button onclick="handleLogout()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+                            ログアウト
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showDashboard() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-8">ダッシュボード</h1>
+                    
+                    <!-- 統計カード -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-600 text-sm">総ユーザー数</p>
+                                    <p id="totalUsers" class="text-3xl font-bold text-gray-800">-</p>
+                                </div>
+                                <i class="fas fa-users text-4xl text-blue-500"></i>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-600 text-sm">総投稿数</p>
+                                    <p id="totalPosts" class="text-3xl font-bold text-gray-800">-</p>
+                                </div>
+                                <i class="fas fa-thumbtack text-4xl text-green-500"></i>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-600 text-sm">総メッセージ数</p>
+                                    <p id="totalMessages" class="text-3xl font-bold text-gray-800">-</p>
+                                </div>
+                                <i class="fas fa-envelope text-4xl text-orange-500"></i>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-gray-600 text-sm">イベント数</p>
+                                    <p id="totalEvents" class="text-3xl font-bold text-gray-800">-</p>
+                                </div>
+                                <i class="fas fa-calendar-alt text-4xl text-purple-500"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 最近のアクティビティ -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">
+                            <i class="fas fa-clock text-blue-500 mr-2"></i>
+                            最近のアクティビティ
+                        </h2>
+                        <div id="recentActivity" class="space-y-3">
+                            <div class="text-center text-gray-500 py-8">
+                                <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                                <p>読み込み中...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadDashboardData();
+        }
+
+        async function loadDashboardData() {
+            try {
+                // ユーザー数
+                const usersSnapshot = await getDocs(collection(db, 'users'));
+                document.getElementById('totalUsers').textContent = usersSnapshot.size;
+
+                // 投稿数
+                const postsSnapshot = await getDocs(collection(db, 'posts'));
+                document.getElementById('totalPosts').textContent = postsSnapshot.size;
+
+                // メッセージ数
+                const messagesSnapshot = await getDocs(collection(db, 'messages'));
+                document.getElementById('totalMessages').textContent = messagesSnapshot.size;
+
+                // イベント数
+                const eventsSnapshot = await getDocs(collection(db, 'events'));
+                document.getElementById('totalEvents').textContent = eventsSnapshot.size;
+
+                // 最近のアクティビティ
+                loadRecentActivity();
+            } catch (error) {
+                console.error('ダッシュボードデータの読み込みエラー:', error);
+            }
+        }
+
+        async function loadRecentActivity() {
+            const activityElement = document.getElementById('recentActivity');
+            
+            try {
+                const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(5));
+                const postsSnapshot = await getDocs(postsQuery);
+
+                if (postsSnapshot.empty) {
+                    activityElement.innerHTML = '<p class="text-center text-gray-500 py-4">アクティビティはありません</p>';
+                    return;
+                }
+
+                activityElement.innerHTML = postsSnapshot.docs.map(doc => {
+                    const post = doc.data();
+                    const date = post.createdAt?.toDate?.() || new Date();
+                    return `
+                        <div class="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
+                            <i class="fas fa-thumbtack text-green-500"></i>
+                            <div class="flex-1">
+                                <p class="text-gray-800"><strong>${post.authorName}</strong> が投稿を作成しました</p>
+                                <p class="text-sm text-gray-600">${post.title}</p>
+                            </div>
+                            <span class="text-sm text-gray-500">${formatDate(date)}</span>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('アクティビティの読み込みエラー:', error);
+                activityElement.innerHTML = '<p class="text-center text-red-500 py-4">読み込みに失敗しました</p>';
+            }
+        }
+
+        function showPosts() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex justify-between items-center mb-8">
+                        <h1 class="text-3xl font-bold text-gray-800">投稿管理</h1>
+                        <button onclick="showCreatePost()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 shadow-lg">
+                            <i class="fas fa-plus mr-2"></i>
+                            新規投稿
+                        </button>
+                    </div>
+
+                    <div id="postsList" class="space-y-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadPostsList();
+        }
+
+        async function loadPostsList() {
+            const postsListElement = document.getElementById('postsList');
+            
+            try {
+                const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+                
+                onSnapshot(postsQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        postsListElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-12">
+                                <i class="fas fa-inbox text-5xl mb-3"></i>
+                                <p class="text-lg">投稿はまだありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    postsListElement.innerHTML = snapshot.docs.map(doc => {
+                        const post = doc.data();
+                        const date = post.createdAt?.toDate?.() || new Date();
+                        return `
+                            <div class="bg-white rounded-lg shadow-md p-6">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="flex-1">
+                                        <h3 class="text-xl font-bold text-gray-800 mb-2">${post.title || '無題'}</h3>
+                                        <p class="text-gray-700 whitespace-pre-wrap mb-3">${post.content || ''}</p>
+                                        <div class="flex items-center space-x-4 text-sm text-gray-600">
+                                            <span><i class="fas fa-user mr-1"></i>${post.authorName || '匿名'}</span>
+                                            <span><i class="fas fa-clock mr-1"></i>${formatDate(date)}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex space-x-2">
+                                        <button onclick="editPost('${doc.id}')" class="text-blue-600 hover:text-blue-700 p-2">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button onclick="deletePost('${doc.id}')" class="text-red-600 hover:text-red-700 p-2">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('投稿リストの読み込みエラー:', error);
+                postsListElement.innerHTML = `
+                    <div class="text-center text-red-500 py-12">
+                        <i class="fas fa-exclamation-triangle text-5xl mb-3"></i>
+                        <p class="text-lg">投稿の読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showCreatePost() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex items-center mb-8">
+                        <button onclick="showPosts()" class="text-gray-600 hover:text-gray-800 mr-4">
+                            <i class="fas fa-arrow-left text-xl"></i>
+                        </button>
+                        <h1 class="text-3xl font-bold text-gray-800">新規投稿</h1>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-md p-8 max-w-4xl">
+                        <form id="createPostForm" class="space-y-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">タイトル</label>
+                                <input
+                                    type="text"
+                                    id="postTitle"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="投稿のタイトルを入力"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">内容</label>
+                                <textarea
+                                    id="postContent"
+                                    required
+                                    rows="10"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="投稿の内容を入力"
+                                ></textarea>
+                            </div>
+
+                            <div id="postErrorMessage" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg"></div>
+
+                            <div class="flex space-x-4">
+                                <button
+                                    type="submit"
+                                    class="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                                >
+                                    <i class="fas fa-paper-plane mr-2"></i>
+                                    投稿する
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick="showPosts()"
+                                    class="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    キャンセル
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('createPostForm').addEventListener('submit', handleCreatePost);
+        }
+
+        async function handleCreatePost(e) {
+            e.preventDefault();
+            const title = document.getElementById('postTitle').value;
+            const content = document.getElementById('postContent').value;
+            const errorMessage = document.getElementById('postErrorMessage');
+            const user = window.currentUser;
+
+            try {
+                await addDoc(collection(db, 'posts'), {
+                    title,
+                    content,
+                    authorId: user.uid,
+                    authorName: user.name || user.email,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+
+                alert('投稿を作成しました');
+                showPosts();
+            } catch (error) {
+                console.error('投稿作成エラー:', error);
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = '投稿の作成に失敗しました: ' + error.message;
+            }
+        }
+
+        async function deletePost(postId) {
+            if (!confirm('この投稿を削除しますか？')) return;
+
+            try {
+                await deleteDoc(doc(db, 'posts', postId));
+                alert('投稿を削除しました');
+            } catch (error) {
+                console.error('投稿削除エラー:', error);
+                alert('投稿の削除に失敗しました: ' + error.message);
+            }
+        }
+
+        function showMessages() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex justify-between items-center mb-8">
+                        <h1 class="text-3xl font-bold text-gray-800">メッセージ管理</h1>
+                        <button onclick="showSendMessage()" class="bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 shadow-lg">
+                            <i class="fas fa-paper-plane mr-2"></i>
+                            新規メッセージ
+                        </button>
+                    </div>
+
+                    <div id="messagesList" class="space-y-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadMessagesList();
+        }
+
+        async function loadMessagesList() {
+            const messagesListElement = document.getElementById('messagesList');
+            
+            try {
+                const messagesQuery = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+                
+                onSnapshot(messagesQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        messagesListElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-12">
+                                <i class="fas fa-inbox text-5xl mb-3"></i>
+                                <p class="text-lg">メッセージはまだありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    messagesListElement.innerHTML = snapshot.docs.map(doc => {
+                        const message = doc.data();
+                        const date = message.createdAt?.toDate?.() || new Date();
+                        return `
+                            <div class="bg-white rounded-lg shadow-md p-6">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <h3 class="text-xl font-bold text-gray-800">${message.subject || '件名なし'}</h3>
+                                            ${message.isRead ? '<span class="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">既読</span>' : '<span class="text-xs bg-orange-500 text-white px-2 py-1 rounded-full">未読</span>'}
+                                        </div>
+                                        <p class="text-gray-700 whitespace-pre-wrap mb-3">${message.content || ''}</p>
+                                        <div class="flex items-center space-x-4 text-sm text-gray-600">
+                                            <span><i class="fas fa-user mr-1"></i>送信者: ${message.senderName || '匿名'}</span>
+                                            <span><i class="fas fa-user-check mr-1"></i>受信者: ${message.recipientName || '不明'}</span>
+                                            <span><i class="fas fa-clock mr-1"></i>${formatDate(date)}</span>
+                                        </div>
+                                    </div>
+                                    <button onclick="deleteMessage('${doc.id}')" class="text-red-600 hover:text-red-700 p-2">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('メッセージリストの読み込みエラー:', error);
+                messagesListElement.innerHTML = `
+                    <div class="text-center text-red-500 py-12">
+                        <i class="fas fa-exclamation-triangle text-5xl mb-3"></i>
+                        <p class="text-lg">メッセージの読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showSendMessage() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex items-center mb-8">
+                        <button onclick="showMessages()" class="text-gray-600 hover:text-gray-800 mr-4">
+                            <i class="fas fa-arrow-left text-xl"></i>
+                        </button>
+                        <h1 class="text-3xl font-bold text-gray-800">新規メッセージ</h1>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-md p-8 max-w-4xl">
+                        <form id="sendMessageForm" class="space-y-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">受信者</label>
+                                <select
+                                    id="messageRecipient"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                    <option value="">選択してください</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">件名</label>
+                                <input
+                                    type="text"
+                                    id="messageSubject"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="件名を入力"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">内容</label>
+                                <textarea
+                                    id="messageContent"
+                                    required
+                                    rows="10"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="メッセージの内容を入力"
+                                ></textarea>
+                            </div>
+
+                            <div id="messageErrorMessage" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg"></div>
+
+                            <div class="flex space-x-4">
+                                <button
+                                    type="submit"
+                                    class="flex-1 bg-orange-600 text-white py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors font-medium"
+                                >
+                                    <i class="fas fa-paper-plane mr-2"></i>
+                                    送信
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick="showMessages()"
+                                    class="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    キャンセル
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            loadUsersList();
+            document.getElementById('sendMessageForm').addEventListener('submit', handleSendMessage);
+        }
+
+        async function loadUsersList() {
+            const recipientSelect = document.getElementById('messageRecipient');
+            
+            try {
+                const usersSnapshot = await getDocs(collection(db, 'users'));
+                recipientSelect.innerHTML = '<option value="">選択してください</option>' + 
+                    usersSnapshot.docs.map(doc => {
+                        const user = doc.data();
+                        return `<option value="${user.uid}" data-name="${user.name || user.email}">${user.name || user.email} (${user.role})</option>`;
+                    }).join('');
+            } catch (error) {
+                console.error('ユーザーリストの読み込みエラー:', error);
+            }
+        }
+
+        async function handleSendMessage(e) {
+            e.preventDefault();
+            const recipientSelect = document.getElementById('messageRecipient');
+            const recipientId = recipientSelect.value;
+            const recipientName = recipientSelect.options[recipientSelect.selectedIndex].dataset.name;
+            const subject = document.getElementById('messageSubject').value;
+            const content = document.getElementById('messageContent').value;
+            const errorMessage = document.getElementById('messageErrorMessage');
+            const user = window.currentUser;
+
+            try {
+                await addDoc(collection(db, 'messages'), {
+                    senderId: user.uid,
+                    senderName: user.name || user.email,
+                    recipientId,
+                    recipientName,
+                    subject,
+                    content,
+                    isRead: false,
+                    createdAt: serverTimestamp()
+                });
+
+                alert('メッセージを送信しました');
+                showMessages();
+            } catch (error) {
+                console.error('メッセージ送信エラー:', error);
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = 'メッセージの送信に失敗しました: ' + error.message;
+            }
+        }
+
+        async function deleteMessage(messageId) {
+            if (!confirm('このメッセージを削除しますか？')) return;
+
+            try {
+                await deleteDoc(doc(db, 'messages', messageId));
+                alert('メッセージを削除しました');
+            } catch (error) {
+                console.error('メッセージ削除エラー:', error);
+                alert('メッセージの削除に失敗しました: ' + error.message);
+            }
+        }
+
+        function showUsers() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex justify-between items-center mb-8">
+                        <h1 class="text-3xl font-bold text-gray-800">ユーザー管理</h1>
+                        <button onclick="showCreateUser()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow-lg">
+                            <i class="fas fa-user-plus mr-2"></i>
+                            新規ユーザー
+                        </button>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名前</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">メール</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">権限</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">クラス</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTable" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                                        <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                                        <p>読み込み中...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            loadUsersTable();
+        }
+
+        async function loadUsersTable() {
+            const usersTableElement = document.getElementById('usersTable');
+            
+            try {
+                const usersSnapshot = await getDocs(collection(db, 'users'));
+                
+                if (usersSnapshot.empty) {
+                    usersTableElement.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                                ユーザーはまだ登録されていません
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                usersTableElement.innerHTML = usersSnapshot.docs.map(doc => {
+                    const user = doc.data();
+                    const roleColor = {
+                        admin: 'bg-red-100 text-red-800',
+                        staff: 'bg-blue-100 text-blue-800',
+                        student: 'bg-green-100 text-green-800'
+                    };
+                    const roleLabel = {
+                        admin: '管理者',
+                        staff: '職員',
+                        student: '生徒'
+                    };
+                    
+                    return `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.name || '-'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.email || '-'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${roleColor[user.role] || 'bg-gray-100 text-gray-800'}">
+                                    ${roleLabel[user.role] || user.role}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.class || '-'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <button onclick="deleteUser('${doc.id}', '${user.uid}')" class="text-red-600 hover:text-red-900">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('ユーザーテーブルの読み込みエラー:', error);
+                usersTableElement.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-6 py-8 text-center text-red-500">
+                            ユーザーの読み込みに失敗しました
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function showCreateUser() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex items-center mb-8">
+                        <button onclick="showUsers()" class="text-gray-600 hover:text-gray-800 mr-4">
+                            <i class="fas fa-arrow-left text-xl"></i>
+                        </button>
+                        <h1 class="text-3xl font-bold text-gray-800">新規ユーザー登録</h1>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-md p-8 max-w-2xl">
+                        <form id="createUserForm" class="space-y-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">名前</label>
+                                <input
+                                    type="text"
+                                    id="userName"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="山田太郎"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">メールアドレス</label>
+                                <input
+                                    type="email"
+                                    id="userEmail"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="user@school.jp"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">パスワード</label>
+                                <input
+                                    type="password"
+                                    id="userPassword"
+                                    required
+                                    minlength="6"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="6文字以上"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">権限</label>
+                                <select
+                                    id="userRole"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                    <option value="student">生徒</option>
+                                    <option value="staff">職員</option>
+                                    <option value="admin">管理者</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">クラス（任意）</label>
+                                <input
+                                    type="text"
+                                    id="userClass"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="1年A組"
+                                />
+                            </div>
+
+                            <div id="userErrorMessage" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg"></div>
+
+                            <div class="flex space-x-4">
+                                <button
+                                    type="submit"
+                                    class="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                                >
+                                    <i class="fas fa-user-plus mr-2"></i>
+                                    登録
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick="showUsers()"
+                                    class="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    キャンセル
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('createUserForm').addEventListener('submit', handleCreateUser);
+        }
+
+        async function handleCreateUser(e) {
+            e.preventDefault();
+            const name = document.getElementById('userName').value;
+            const email = document.getElementById('userEmail').value;
+            const password = document.getElementById('userPassword').value;
+            const role = document.getElementById('userRole').value;
+            const userClass = document.getElementById('userClass').value;
+            const errorMessage = document.getElementById('userErrorMessage');
+
+            try {
+                // Firebase Authenticationにユーザーを作成
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const uid = userCredential.user.uid;
+
+                // Firestoreにユーザー情報を保存
+                await setDoc(doc(db, 'users', uid), {
+                    uid,
+                    name,
+                    email,
+                    role,
+                    class: userClass,
+                    createdAt: serverTimestamp()
+                });
+
+                alert('ユーザーを登録しました');
+                
+                // 管理者として再ログイン
+                await signInWithEmailAndPassword(auth, window.currentUser.email, prompt('あなたのパスワードを再入力してください'));
+                
+                showUsers();
+            } catch (error) {
+                console.error('ユーザー登録エラー:', error);
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = 'ユーザーの登録に失敗しました: ' + error.message;
+            }
+        }
+
+        async function deleteUser(docId, uid) {
+            if (!confirm('このユーザーを削除しますか？')) return;
+
+            try {
+                // Firestoreからユーザーデータを削除
+                await deleteDoc(doc(db, 'users', docId));
+                // 注意: Firebase Authenticationからユーザーを削除するには、Admin SDKが必要です
+                // ここではFirestoreのデータのみを削除しています
+                
+                alert('ユーザーを削除しました（認証情報は残っています）');
+                loadUsersTable();
+            } catch (error) {
+                console.error('ユーザー削除エラー:', error);
+                alert('ユーザーの削除に失敗しました: ' + error.message);
+            }
+        }
+
+        function showEvents() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex justify-between items-center mb-8">
+                        <h1 class="text-3xl font-bold text-gray-800">イベント管理</h1>
+                        <button onclick="showCreateEvent()" class="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 shadow-lg">
+                            <i class="fas fa-plus mr-2"></i>
+                            新規イベント
+                        </button>
+                    </div>
+
+                    <div id="eventsList" class="space-y-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadEventsList();
+        }
+
+        async function loadEventsList() {
+            const eventsListElement = document.getElementById('eventsList');
+            
+            try {
+                const eventsQuery = query(collection(db, 'events'), orderBy('eventDate', 'asc'));
+                
+                onSnapshot(eventsQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        eventsListElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-12">
+                                <i class="fas fa-calendar-times text-5xl mb-3"></i>
+                                <p class="text-lg">イベントはまだ登録されていません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    eventsListElement.innerHTML = snapshot.docs.map(doc => {
+                        const event = doc.data();
+                        const date = event.eventDate?.toDate?.() || new Date();
+                        return `
+                            <div class="bg-white rounded-lg shadow-md p-6">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex items-start space-x-4 flex-1">
+                                        <div class="flex-shrink-0 w-20 text-center">
+                                            <div class="bg-purple-500 text-white rounded-t-lg py-1 text-xs font-bold">
+                                                ${date.getFullYear()}年
+                                            </div>
+                                            <div class="bg-white border border-purple-500 py-2">
+                                                <div class="text-sm font-semibold">${date.getMonth() + 1}月</div>
+                                                <div class="text-3xl font-bold text-gray-800">${date.getDate()}</div>
+                                            </div>
+                                            <div class="bg-purple-100 rounded-b-lg py-1 text-xs">
+                                                ${['日', '月', '火', '水', '木', '金', '土'][date.getDay()]}曜日
+                                            </div>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h3 class="text-xl font-bold text-gray-800 mb-2">${event.title || '無題'}</h3>
+                                            <p class="text-gray-700 mb-2">${event.description || ''}</p>
+                                            <p class="text-sm text-gray-600">
+                                                <i class="fas fa-clock mr-1"></i>
+                                                ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button onclick="deleteEvent('${doc.id}')" class="text-red-600 hover:text-red-700 p-2">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('イベントリストの読み込みエラー:', error);
+                eventsListElement.innerHTML = `
+                    <div class="text-center text-red-500 py-12">
+                        <i class="fas fa-exclamation-triangle text-5xl mb-3"></i>
+                        <p class="text-lg">イベントの読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showCreateEvent() {
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div>
+                    <div class="flex items-center mb-8">
+                        <button onclick="showEvents()" class="text-gray-600 hover:text-gray-800 mr-4">
+                            <i class="fas fa-arrow-left text-xl"></i>
+                        </button>
+                        <h1 class="text-3xl font-bold text-gray-800">新規イベント</h1>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-md p-8 max-w-2xl">
+                        <form id="createEventForm" class="space-y-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">イベント名</label>
+                                <input
+                                    type="text"
+                                    id="eventTitle"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="体育祭"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">説明</label>
+                                <textarea
+                                    id="eventDescription"
+                                    rows="4"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="イベントの詳細を入力"
+                                ></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">日時</label>
+                                <input
+                                    type="datetime-local"
+                                    id="eventDate"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                            </div>
+
+                            <div id="eventErrorMessage" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg"></div>
+
+                            <div class="flex space-x-4">
+                                <button
+                                    type="submit"
+                                    class="flex-1 bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                                >
+                                    <i class="fas fa-calendar-plus mr-2"></i>
+                                    登録
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick="showEvents()"
+                                    class="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    キャンセル
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('createEventForm').addEventListener('submit', handleCreateEvent);
+        }
+
+        async function handleCreateEvent(e) {
+            e.preventDefault();
+            const title = document.getElementById('eventTitle').value;
+            const description = document.getElementById('eventDescription').value;
+            const eventDate = new Date(document.getElementById('eventDate').value);
+            const errorMessage = document.getElementById('eventErrorMessage');
+
+            try {
+                await addDoc(collection(db, 'events'), {
+                    title,
+                    description,
+                    eventDate: eventDate,
+                    createdAt: serverTimestamp()
+                });
+
+                alert('イベントを登録しました');
+                showEvents();
+            } catch (error) {
+                console.error('イベント登録エラー:', error);
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = 'イベントの登録に失敗しました: ' + error.message;
+            }
+        }
+
+        async function deleteEvent(eventId) {
+            if (!confirm('このイベントを削除しますか？')) return;
+
+            try {
+                await deleteDoc(doc(db, 'events', eventId));
+                alert('イベントを削除しました');
+            } catch (error) {
+                console.error('イベント削除エラー:', error);
+                alert('イベントの削除に失敗しました: ' + error.message);
+            }
+        }
+
+        function formatDate(date) {
+            const now = new Date();
+            const diff = now - date;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            
+            if (days === 0) {
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                if (hours === 0) {
+                    const minutes = Math.floor(diff / (1000 * 60));
+                    return minutes <= 0 ? 'たった今' : `${minutes}分前`;
+                }
+                return `${hours}時間前`;
+            } else if (days === 1) {
+                return '昨日';
+            } else if (days < 7) {
+                return `${days}日前`;
+            } else {
+                return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+            }
+        }
+
+        async function handleLogout() {
+            if (confirm('ログアウトしますか？')) {
+                try {
+                    await signOut(auth);
+                } catch (error) {
+                    alert('ログアウトに失敗しました: ' + error.message);
+                }
+            }
+        }
+
+        // グローバル関数として公開
+        window.showDashboard = showDashboard;
+        window.showPosts = showPosts;
+        window.showMessages = showMessages;
+        window.showUsers = showUsers;
+        window.showEvents = showEvents;
+        window.showCreatePost = showCreatePost;
+        window.showSendMessage = showSendMessage;
+        window.showCreateUser = showCreateUser;
+        window.showCreateEvent = showCreateEvent;
+        window.deletePost = deletePost;
+        window.deleteMessage = deleteMessage;
+        window.deleteUser = deleteUser;
+        window.deleteEvent = deleteEvent;
+        window.handleLogout = handleLogout;
+    </script>
+</body>
+</html>

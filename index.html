@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学校コミュニケーションアプリ - 生徒・保護者向け</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .wood-bg {
+            background-image: url('data:image/svg+xml,%3Csvg width="100" height="100" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noise"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /%3E%3C/filter%3E%3Crect width="100" height="100" filter="url(%23noise)" opacity="0.1"/%3E%3C/svg%3E'), linear-gradient(135deg, #8B7355 0%, #6B5344 100%);
+        }
+        .cork-pattern {
+            background-image: url('data:image/svg+xml,%3Csvg width="60" height="60" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="cork"%3E%3CfeTurbulence type="turbulence" baseFrequency="0.05" numOctaves="2" seed="2" /%3E%3C/filter%3E%3Crect width="60" height="60" filter="url(%23cork)" fill="%23D4A574" opacity="0.5"/%3E%3C/svg%3E');
+            background-color: #E6C8A0;
+        }
+        .note-shadow {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+        }
+        .pin {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            position: absolute;
+            top: -10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app"></div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+
+        // Firebase設定（実際の値に置き換える必要があります）
+        const firebaseConfig = {
+            apiKey: "AIzaSyADqyQpF6Ov2JPe18eDHpbM7-hRDIHJseY",
+            authDomain: "shinshu-clark-app.firebaseapp.com",
+            projectId: "shinshu-clark-app",
+            storageBucket: "shinshu-clark-app.firebasestorage.app",
+            messagingSenderId: "892911464932",
+            appId: "1:892911464932:web:4eeed95bdf19c98e3ad7f1"
+        };
+
+        // Firebase初期化
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        // グローバルに公開
+        window.firebaseApp = { app, auth, db, storage };
+        window.firebaseAuth = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
+        window.firebaseFirestore = { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, onSnapshot, serverTimestamp };
+        window.firebaseStorage = { ref, uploadBytes, getDownloadURL };
+
+        // アプリ初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        function initApp() {
+            const appElement = document.getElementById('app');
+            
+            // 認証状態の監視
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    // ユーザー情報を取得
+                    getUserData(user.uid).then(userData => {
+                        if (userData) {
+                            window.currentUser = { ...user, ...userData };
+                            showHome();
+                        } else {
+                            showLogin();
+                        }
+                    });
+                } else {
+                    window.currentUser = null;
+                    showLogin();
+                }
+            });
+        }
+
+        async function getUserData(uid) {
+            const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', uid)));
+            if (!userDoc.empty) {
+                return userDoc.docs[0].data();
+            }
+            return null;
+        }
+
+        function showLogin() {
+            const appElement = document.getElementById('app');
+            appElement.innerHTML = `
+                <div class="wood-bg min-h-screen flex flex-col items-center justify-center p-6">
+                    <div class="w-full max-w-md">
+                        <div class="text-center mb-8">
+                            <div class="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full mb-6 shadow-xl transform -rotate-3">
+                                <i class="fas fa-school text-4xl text-gray-800"></i>
+                            </div>
+                            <div class="bg-white rounded-sm p-4 shadow-lg transform rotate-1 border-l-4 border-gray-800 mb-2">
+                                <h1 class="text-2xl font-bold text-gray-900">学校コミュニケーション</h1>
+                            </div>
+                            <div class="bg-yellow-50 rounded-sm p-3 shadow-md transform -rotate-0.5 border-l-4 border-yellow-400">
+                                <p class="text-gray-700">ログインしてください</p>
+                            </div>
+                        </div>
+
+                        <form id="loginForm" class="space-y-4">
+                            <div class="bg-white rounded-sm p-6 shadow-xl transform rotate-0.5 border border-gray-200">
+                                <label for="email" class="block text-gray-700 mb-2 font-medium">
+                                    メールアドレス
+                                </label>
+                                <input
+                                    id="email"
+                                    type="email"
+                                    required
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="example@school.jp"
+                                />
+                            </div>
+
+                            <div class="bg-white rounded-sm p-6 shadow-xl transform -rotate-0.5 border border-gray-200">
+                                <label for="password" class="block text-gray-700 mb-2 font-medium">
+                                    パスワード
+                                </label>
+                                <input
+                                    id="password"
+                                    type="password"
+                                    required
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+
+                            <div id="errorMessage" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-sm transform rotate-0.5"></div>
+
+                            <button
+                                type="submit"
+                                class="w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 transition-colors shadow-lg transform hover:scale-105 font-medium"
+                            >
+                                <i class="fas fa-sign-in-alt mr-2"></i>
+                                ログイン
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('errorMessage');
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+            } catch (error) {
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = 'ログインに失敗しました: ' + error.message;
+            }
+        }
+
+        function showHome() {
+            const appElement = document.getElementById('app');
+            const user = window.currentUser;
+            
+            appElement.innerHTML = `
+                <div class="min-h-screen bg-gray-50">
+                    <!-- ヘッダー -->
+                    <header class="bg-white shadow-md sticky top-0 z-50">
+                        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+                            <div class="flex items-center space-x-3">
+                                <i class="fas fa-school text-2xl text-blue-600"></i>
+                                <h1 class="text-xl font-bold text-gray-800">学校コミュニケーション</h1>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <span class="text-sm text-gray-600">${user.name || user.email}</span>
+                                <button onclick="handleLogout()" class="text-red-600 hover:text-red-700">
+                                    <i class="fas fa-sign-out-alt text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <!-- メインコンテンツ -->
+                    <main class="max-w-4xl mx-auto px-4 py-6">
+                        <!-- ナビゲーション -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <button onclick="showHome()" class="bg-blue-500 text-white p-4 rounded-lg shadow-lg hover:bg-blue-600 transition-all transform hover:scale-105">
+                                <i class="fas fa-home text-3xl mb-2"></i>
+                                <div class="font-medium">ホーム</div>
+                            </button>
+                            <button onclick="showCorkboard()" class="bg-green-500 text-white p-4 rounded-lg shadow-lg hover:bg-green-600 transition-all transform hover:scale-105">
+                                <i class="fas fa-thumbtack text-3xl mb-2"></i>
+                                <div class="font-medium">掲示板</div>
+                            </button>
+                            <button onclick="showCalendar()" class="bg-purple-500 text-white p-4 rounded-lg shadow-lg hover:bg-purple-600 transition-all transform hover:scale-105">
+                                <i class="fas fa-calendar-alt text-3xl mb-2"></i>
+                                <div class="font-medium">カレンダー</div>
+                            </button>
+                            <button onclick="showMessages()" class="bg-orange-500 text-white p-4 rounded-lg shadow-lg hover:bg-orange-600 transition-all transform hover:scale-105">
+                                <i class="fas fa-envelope text-3xl mb-2"></i>
+                                <div class="font-medium">メッセージ</div>
+                            </button>
+                        </div>
+
+                        <!-- コンテンツエリア -->
+                        <div id="contentArea">
+                            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                                <h2 class="text-2xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-bell text-yellow-500 mr-2"></i>
+                                    お知らせ
+                                </h2>
+                                <div id="postsList" class="space-y-4">
+                                    <div class="text-center text-gray-500 py-8">
+                                        <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                                        <p>読み込み中...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-lg shadow-md p-6">
+                                <h2 class="text-2xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-calendar-check text-purple-500 mr-2"></i>
+                                    直近のイベント
+                                </h2>
+                                <div id="eventsList" class="space-y-3">
+                                    <div class="text-center text-gray-500 py-8">
+                                        <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                                        <p>読み込み中...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            `;
+
+            loadPosts();
+            loadEvents();
+        }
+
+        async function loadPosts() {
+            const postsListElement = document.getElementById('postsList');
+            
+            try {
+                const postsQuery = query(
+                    collection(db, 'posts'),
+                    orderBy('createdAt', 'desc'),
+                    limit(10)
+                );
+
+                onSnapshot(postsQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        postsListElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-8">
+                                <i class="fas fa-inbox text-4xl mb-2"></i>
+                                <p>まだ投稿がありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    postsListElement.innerHTML = snapshot.docs.map(doc => {
+                        const post = doc.data();
+                        const date = post.createdAt?.toDate?.() || new Date();
+                        return `
+                            <div class="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-lg note-shadow">
+                                <h3 class="font-bold text-lg text-gray-800 mb-2">${post.title || '無題'}</h3>
+                                <p class="text-gray-700 mb-3 whitespace-pre-wrap">${post.content || ''}</p>
+                                <div class="flex items-center justify-between text-sm text-gray-600">
+                                    <span><i class="fas fa-user mr-1"></i>${post.authorName || '匿名'}</span>
+                                    <span><i class="fas fa-clock mr-1"></i>${formatDate(date)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('投稿の読み込みエラー:', error);
+                postsListElement.innerHTML = `
+                    <div class="text-center text-red-500 py-8">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-2"></i>
+                        <p>投稿の読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadEvents() {
+            const eventsListElement = document.getElementById('eventsList');
+            
+            try {
+                const eventsQuery = query(
+                    collection(db, 'events'),
+                    orderBy('eventDate', 'asc'),
+                    limit(5)
+                );
+
+                onSnapshot(eventsQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        eventsListElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-8">
+                                <i class="fas fa-calendar-times text-4xl mb-2"></i>
+                                <p>予定されているイベントはありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    eventsListElement.innerHTML = snapshot.docs.map(doc => {
+                        const event = doc.data();
+                        const date = event.eventDate?.toDate?.() || new Date();
+                        return `
+                            <div class="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                                <div class="flex-shrink-0 w-16 text-center">
+                                    <div class="bg-purple-500 text-white rounded-t-lg py-1 text-xs font-bold">
+                                        ${date.getMonth() + 1}月
+                                    </div>
+                                    <div class="bg-white border border-purple-500 rounded-b-lg py-2 text-2xl font-bold text-gray-800">
+                                        ${date.getDate()}
+                                    </div>
+                                </div>
+                                <div class="flex-1">
+                                    <h4 class="font-bold text-gray-800">${event.title || '無題'}</h4>
+                                    <p class="text-sm text-gray-600">${event.description || ''}</p>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('イベントの読み込みエラー:', error);
+                eventsListElement.innerHTML = `
+                    <div class="text-center text-red-500 py-8">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-2"></i>
+                        <p>イベントの読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showCorkboard() {
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = `
+                <div class="cork-pattern rounded-lg shadow-xl p-6 min-h-screen">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-3xl font-bold text-gray-800">
+                            <i class="fas fa-thumbtack text-red-500 mr-2"></i>
+                            掲示板
+                        </h2>
+                    </div>
+                    <div id="corkboardPosts" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="text-center text-gray-600 col-span-full py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadCorkboardPosts();
+        }
+
+        async function loadCorkboardPosts() {
+            const corkboardElement = document.getElementById('corkboardPosts');
+            
+            try {
+                const postsQuery = query(
+                    collection(db, 'posts'),
+                    orderBy('createdAt', 'desc')
+                );
+
+                onSnapshot(postsQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        corkboardElement.innerHTML = `
+                            <div class="text-center text-gray-600 col-span-full py-12">
+                                <i class="fas fa-inbox text-5xl mb-3"></i>
+                                <p class="text-lg">まだ投稿がありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    const colors = ['bg-yellow-100', 'bg-pink-100', 'bg-blue-100', 'bg-green-100'];
+                    const rotations = ['rotate-1', '-rotate-1', 'rotate-2', '-rotate-2'];
+                    
+                    corkboardElement.innerHTML = snapshot.docs.map((doc, index) => {
+                        const post = doc.data();
+                        const date = post.createdAt?.toDate?.() || new Date();
+                        const color = colors[index % colors.length];
+                        const rotation = rotations[index % rotations.length];
+                        
+                        return `
+                            <div class="relative ${color} ${rotation} p-6 shadow-lg note-shadow hover:scale-105 transition-transform cursor-pointer">
+                                <div class="pin bg-red-500 left-1/2 transform -translate-x-1/2"></div>
+                                <h3 class="font-bold text-lg text-gray-800 mb-3 pt-4">${post.title || '無題'}</h3>
+                                <p class="text-gray-700 mb-4 text-sm line-clamp-4">${post.content || ''}</p>
+                                <div class="text-xs text-gray-600 border-t border-gray-300 pt-2">
+                                    <div class="flex justify-between">
+                                        <span><i class="fas fa-user mr-1"></i>${post.authorName || '匿名'}</span>
+                                        <span>${formatDate(date)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('掲示板の読み込みエラー:', error);
+                corkboardElement.innerHTML = `
+                    <div class="text-center text-red-500 col-span-full py-12">
+                        <i class="fas fa-exclamation-triangle text-5xl mb-3"></i>
+                        <p class="text-lg">掲示板の読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showCalendar() {
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = `
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">
+                        <i class="fas fa-calendar-alt text-purple-500 mr-2"></i>
+                        カレンダー
+                    </h2>
+                    <div id="calendarEvents" class="space-y-3">
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadCalendarEvents();
+        }
+
+        async function loadCalendarEvents() {
+            const calendarElement = document.getElementById('calendarEvents');
+            
+            try {
+                const eventsQuery = query(
+                    collection(db, 'events'),
+                    orderBy('eventDate', 'asc')
+                );
+
+                onSnapshot(eventsQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        calendarElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-12">
+                                <i class="fas fa-calendar-times text-5xl mb-3"></i>
+                                <p class="text-lg">予定されているイベントはありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    calendarElement.innerHTML = snapshot.docs.map(doc => {
+                        const event = doc.data();
+                        const date = event.eventDate?.toDate?.() || new Date();
+                        return `
+                            <div class="border-l-4 border-purple-500 bg-purple-50 p-4 rounded-r-lg shadow hover:shadow-lg transition-shadow">
+                                <div class="flex items-start space-x-4">
+                                    <div class="flex-shrink-0 w-20 text-center">
+                                        <div class="bg-purple-500 text-white rounded-t-lg py-1 text-xs font-bold">
+                                            ${date.getFullYear()}年
+                                        </div>
+                                        <div class="bg-white border border-purple-500 py-2">
+                                            <div class="text-sm font-semibold">${date.getMonth() + 1}月</div>
+                                            <div class="text-3xl font-bold text-gray-800">${date.getDate()}</div>
+                                        </div>
+                                        <div class="bg-purple-100 rounded-b-lg py-1 text-xs">
+                                            ${['日', '月', '火', '水', '木', '金', '土'][date.getDay()]}曜日
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-bold text-xl text-gray-800 mb-2">${event.title || '無題'}</h3>
+                                        <p class="text-gray-700 mb-2">${event.description || ''}</p>
+                                        <div class="text-sm text-gray-600">
+                                            <i class="fas fa-clock mr-1"></i>
+                                            ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('カレンダーの読み込みエラー:', error);
+                calendarElement.innerHTML = `
+                    <div class="text-center text-red-500 py-12">
+                        <i class="fas fa-exclamation-triangle text-5xl mb-3"></i>
+                        <p class="text-lg">カレンダーの読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showMessages() {
+            const contentArea = document.getElementById('contentArea');
+            const user = window.currentUser;
+            
+            contentArea.innerHTML = `
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">
+                        <i class="fas fa-envelope text-orange-500 mr-2"></i>
+                        メッセージ
+                    </h2>
+                    
+                    ${user.role === 'staff' || user.role === 'admin' ? `
+                    <div class="mb-6">
+                        <button onclick="showSendMessage()" class="bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 transition-colors shadow-lg">
+                            <i class="fas fa-paper-plane mr-2"></i>
+                            新しいメッセージを送信
+                        </button>
+                    </div>
+                    ` : ''}
+                    
+                    <div id="messagesList" class="space-y-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            loadMessages();
+        }
+
+        async function loadMessages() {
+            const messagesListElement = document.getElementById('messagesList');
+            const user = window.currentUser;
+            
+            try {
+                const messagesQuery = query(
+                    collection(db, 'messages'),
+                    where('recipientId', '==', user.uid),
+                    orderBy('createdAt', 'desc')
+                );
+
+                onSnapshot(messagesQuery, (snapshot) => {
+                    if (snapshot.empty) {
+                        messagesListElement.innerHTML = `
+                            <div class="text-center text-gray-500 py-12">
+                                <i class="fas fa-inbox text-5xl mb-3"></i>
+                                <p class="text-lg">メッセージはありません</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    messagesListElement.innerHTML = snapshot.docs.map(doc => {
+                        const message = doc.data();
+                        const date = message.createdAt?.toDate?.() || new Date();
+                        const isRead = message.isRead || false;
+                        
+                        return `
+                            <div class="border-l-4 ${isRead ? 'border-gray-300 bg-gray-50' : 'border-orange-500 bg-orange-50'} p-4 rounded-r-lg shadow">
+                                <div class="flex justify-between items-start mb-2">
+                                    <h3 class="font-bold text-lg text-gray-800">${message.subject || '件名なし'}</h3>
+                                    ${!isRead ? '<span class="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">未読</span>' : ''}
+                                </div>
+                                <p class="text-gray-700 mb-3 whitespace-pre-wrap">${message.content || ''}</p>
+                                <div class="flex items-center justify-between text-sm text-gray-600">
+                                    <span><i class="fas fa-user mr-1"></i>${message.senderName || '匿名'}</span>
+                                    <span><i class="fas fa-clock mr-1"></i>${formatDate(date)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                });
+            } catch (error) {
+                console.error('メッセージの読み込みエラー:', error);
+                messagesListElement.innerHTML = `
+                    <div class="text-center text-red-500 py-12">
+                        <i class="fas fa-exclamation-triangle text-5xl mb-3"></i>
+                        <p class="text-lg">メッセージの読み込みに失敗しました</p>
+                    </div>
+                `;
+            }
+        }
+
+        function formatDate(date) {
+            const now = new Date();
+            const diff = now - date;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            
+            if (days === 0) {
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                if (hours === 0) {
+                    const minutes = Math.floor(diff / (1000 * 60));
+                    return minutes <= 0 ? 'たった今' : `${minutes}分前`;
+                }
+                return `${hours}時間前`;
+            } else if (days === 1) {
+                return '昨日';
+            } else if (days < 7) {
+                return `${days}日前`;
+            } else {
+                return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+            }
+        }
+
+        async function handleLogout() {
+            if (confirm('ログアウトしますか？')) {
+                try {
+                    await signOut(auth);
+                } catch (error) {
+                    alert('ログアウトに失敗しました: ' + error.message);
+                }
+            }
+        }
+
+        // グローバル関数として公開
+        window.showHome = showHome;
+        window.showCorkboard = showCorkboard;
+        window.showCalendar = showCalendar;
+        window.showMessages = showMessages;
+        window.handleLogout = handleLogout;
+    </script>
+</body>
+</html>

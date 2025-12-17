@@ -1,0 +1,92 @@
+{
+  "users": [
+    {
+      "uid": "REPLACE_WITH_ACTUAL_UID",
+      "name": "管理者",
+      "email": "admin@school.jp",
+      "role": "admin",
+      "class": "",
+      "createdAt": "2025-12-17T00:00:00Z"
+    },
+    {
+      "uid": "SAMPLE_STAFF_UID_1",
+      "name": "山田太郎",
+      "email": "yamada@school.jp",
+      "role": "staff",
+      "class": "担任: 1年A組",
+      "createdAt": "2025-12-17T00:00:00Z"
+    },
+    {
+      "uid": "SAMPLE_STUDENT_UID_1",
+      "name": "佐藤花子",
+      "email": "satoh@school.jp",
+      "role": "student",
+      "class": "1年A組",
+      "createdAt": "2025-12-17T00:00:00Z"
+    }
+  ],
+  "posts": [
+    {
+      "title": "ようこそ！学校コミュニケーションアプリへ",
+      "content": "このアプリでは、学校からの重要なお知らせやイベント情報を確認できます。\n\n定期的にチェックして、最新情報を見逃さないようにしましょう！",
+      "authorId": "REPLACE_WITH_ACTUAL_UID",
+      "authorName": "管理者",
+      "createdAt": "2025-12-17T09:00:00Z",
+      "updatedAt": "2025-12-17T09:00:00Z"
+    },
+    {
+      "title": "【重要】保護者会のお知らせ",
+      "content": "日時: 2025年12月20日（金） 15:00-16:30\n場所: 体育館\n\n全保護者の皆様のご参加をお願いいたします。\n\n内容:\n- 学期の振り返り\n- 冬休みの過ごし方\n- 次学期の予定\n\n※欠席される場合は担任までご連絡ください。",
+      "authorId": "SAMPLE_STAFF_UID_1",
+      "authorName": "山田太郎",
+      "createdAt": "2025-12-17T10:00:00Z",
+      "updatedAt": "2025-12-17T10:00:00Z"
+    },
+    {
+      "title": "持ち物のお知らせ - 明日の体育",
+      "content": "明日の体育の授業では体育館でバスケットボールを行います。\n\n【持ち物】\n・体育着\n・体育館シューズ\n・タオル\n・水筒\n\n忘れ物のないようにしましょう！",
+      "authorId": "SAMPLE_STAFF_UID_1",
+      "authorName": "山田太郎",
+      "createdAt": "2025-12-17T11:00:00Z",
+      "updatedAt": "2025-12-17T11:00:00Z"
+    }
+  ],
+  "messages": [
+    {
+      "senderId": "REPLACE_WITH_ACTUAL_UID",
+      "senderName": "管理者",
+      "recipientId": "SAMPLE_STUDENT_UID_1",
+      "recipientName": "佐藤花子",
+      "subject": "アプリへようこそ",
+      "content": "佐藤さん、こんにちは。\n\n学校コミュニケーションアプリへようこそ！\n\nこのアプリでは、学校からの連絡を受け取ることができます。定期的にチェックしてくださいね。\n\nご不明な点があれば、いつでもご連絡ください。",
+      "isRead": false,
+      "createdAt": "2025-12-17T09:30:00Z"
+    }
+  ],
+  "events": [
+    {
+      "title": "保護者会",
+      "description": "第2学期末の保護者会を開催します。全保護者の皆様のご参加をお願いいたします。",
+      "eventDate": "2025-12-20T15:00:00Z",
+      "createdAt": "2025-12-17T09:00:00Z"
+    },
+    {
+      "title": "終業式",
+      "description": "第2学期の終業式を行います。通常登校、11:30下校予定です。",
+      "eventDate": "2025-12-24T08:30:00Z",
+      "createdAt": "2025-12-17T09:00:00Z"
+    },
+    {
+      "title": "冬休み",
+      "description": "冬休み期間です。事故やケガに気をつけて、楽しい冬休みをお過ごしください。",
+      "eventDate": "2025-12-25T00:00:00Z",
+      "createdAt": "2025-12-17T09:00:00Z"
+    },
+    {
+      "title": "始業式",
+      "description": "第3学期の始業式を行います。元気に登校してください！",
+      "eventDate": "2026-01-07T08:30:00Z",
+      "createdAt": "2025-12-17T09:00:00Z"
+    }
+  ]
+}
